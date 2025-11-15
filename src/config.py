@@ -73,9 +73,9 @@ class Config:
     MAX_WORDS_IN_CHUNK: int = 180
 
     # Кандидаты для разных стадий AdvancedHybridRetrieval
-    TFIDF_CANDIDATES: int = 200
-    DENSE_CANDIDATES: int = 200
-    RERANK_CANDIDATES: int = 80
+    TFIDF_CANDIDATES: int = 400
+    DENSE_CANDIDATES: int = 400
+    RERANK_CANDIDATES: int = 120
 
     # ChromaDB настройки
     CHROMA_PERSIST_DIR: str = "chroma_db"

@@ -87,14 +87,6 @@ class TFIDFRetrieval:
         self.logger.info("Indexes built successfully!")
 
     def search(self, query: str, top_k: int = None, method: str = "hybrid") -> List[str]:
-        """
-        Поиск с использованием гибридного подхода (TF-IDF + BM25)
-
-        Args:
-            query: поисковый запрос
-            top_k: количество возвращаемых документов
-            method: "tfidf", "bm25", или "hybrid"
-        """
         if top_k is None:
             top_k = self.config.FINAL_TOP_K_DOCS
 
@@ -109,7 +101,6 @@ class TFIDFRetrieval:
         # Токенизация запроса для BM25
         tokenized_query = expanded_query.split()
 
-        # Вычисление скоров для каждого метода
         scores = {}
 
         if method in ["tfidf", "hybrid"]:

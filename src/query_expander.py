@@ -37,6 +37,23 @@ class QueryExpander:
                 "альфа чек", "альфачек", "услуга альфа чек",
                 "смс информирование", "смс уведомления", "смс оповещения"
             ],
+            "альфачек": [  # отдельный ключ на всякий случай
+                "альфачек", "альфа чек", "услуга альфа чек",
+                "смс информирование", "смс уведомления", "смс оповещения"
+            ],
+            "сбп": [
+                "сбп",
+                "система быстрых платежей",
+                "быстрые платежи",
+                "перевод через систему быстрых платежей",
+                "перевод по номеру телефона"
+            ],
+            "кэшбэк": [
+                "кэшбэк", "кэшбек", "cashback", "кэшбэк по карте"
+            ],
+            "кэшбек": [
+                "кэшбек", "кэшбэк", "cashback", "кэшбэк по карте"
+            ],
         }
 
     def expand_query(self, query: str) -> str:
@@ -44,7 +61,8 @@ class QueryExpander:
         expanded_terms = [original_query]
 
         for term, synonyms in self.synonyms.items():
-            if term in original_query:
+            variants = [term] + synonyms
+            if any(v in original_query for v in variants):
                 expanded_terms.extend(synonyms)
 
         unique_terms = list(dict.fromkeys(expanded_terms))

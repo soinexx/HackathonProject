@@ -44,8 +44,7 @@ class AdvancedPreprocessor:
         ]
 
     def _basic_clean(self, text: str) -> str:
-        text = str(text)
-        text = text.lower()
+        text = str(text).lower()
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
 
@@ -99,7 +98,7 @@ class AdvancedPreprocessor:
         # Проверка уникальности слов
         words = chunk.split()
         unique_words = set(words)
-        if len(unique_words) / len(words) < 0.5:  # 50% уникальных слов
+        if len(unique_words) / len(words) < 0.35:  # 35% уникальных слов
             return False
 
         return True
