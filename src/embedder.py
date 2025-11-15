@@ -1,3 +1,4 @@
+# embedder.py - ОБНОВЛЕННАЯ ВЕРСИЯ
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import logging
@@ -14,16 +15,25 @@ class EmbeddingModel:
         self.logger = logging.getLogger(__name__)
         self.model = None
         self.model_name = config.EMBEDDING_MODEL
+        # Добавляем параметр trust_remote_code
+        self.trust_remote_code = getattr(config, 'TRUST_REMOTE_CODE', True)
 
     def load_model(self):
-        """Загрузка модели эмбеддингов"""
+        """Загрузка модели эмбеддингов с trust_remote_code"""
         try:
-            self.logger.info(f"Loading embedding model: {self.model_name}")
-            self.model = SentenceTransformer(self.model_name)
+            self.logger.info(f"Loading embedding model: {self.model_name} with trust_remote_code={self.trust_remote_code}")
+            self.model = SentenceTransformer(
+                self.model_name,
+                trust_remote_code=self.trust_remote_code
+            )
             self.logger.info("Model loaded successfully")
         except Exception as e:
             self.logger.error(f"Error loading model: {e}")
-            raise
+            # Fallback на проверенную модель
+            self.logger.info("Trying fallback model...")
+            self.model_name = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+            self.model = SentenceTransformer(self.model_name)
+            self.logger.info(f"Fallback model loaded: {self.model_name}")
 
     def encode(self, texts: List[str], batch_size: int = 32) -> np.ndarray:
         """
@@ -43,7 +53,7 @@ class EmbeddingModel:
                 batch_size=batch_size,
                 show_progress_bar=True,
                 convert_to_numpy=True,
-                normalize_embeddings=True  # для косинусной схожести
+                normalize_embeddings=True
             )
             self.logger.info(f"Generated embeddings shape: {embeddings.shape}")
             return embeddings
@@ -71,6 +81,7 @@ class EmbeddingModel:
     def get_available_models(cls) -> List[str]:
         """Возвращает список доступных моделей"""
         return [
+            "Alibaba-NLP/gte-multilingual-base",
             "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
             "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
             "intfloat/multilingual-e5-base"

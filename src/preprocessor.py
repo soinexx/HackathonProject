@@ -141,18 +141,48 @@ class DataPreprocessor:
         self.logger.info(f"Processed {len(processed_docs)} documents")
         return processed_docs
 
+    def is_quality_chunk(self, text: str) -> bool:
+        """Проверяет качество чанка - отфильтровывает технические тексты"""
+        if len(text.strip()) < self.config.MIN_CHUNK_LENGTH:
+            return False
+
+        words = text.split()
+        unique_words = set(words)
+
+        # Фильтр повторяющихся слов (технические тексты)
+        if len(unique_words) / len(words) < self.config.MIN_UNIQUE_WORDS_RATIO:
+            return False
+
+        # Фильтр слишком коротких предложений (интерфейсные тексты)
+        sentences = text.split('.')
+        avg_sentence_length = sum(len(sent.split()) for sent in sentences) / len(sentences)
+        if avg_sentence_length < 3:
+            return False
+
+        # Фильтр шаблонных текстов
+        spam_patterns = [
+            r'^\s*(далее|продолжить|ещё|еще|загрузить|скачать)\s*$',
+            r'\b(?:номер карты|продолжить|далее)\b.*\b(?:номер карты|продолжить|далее)\b',
+        ]
+
+        for pattern in spam_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                return False
+
+        return True
+
     def create_chunks(self, processed_docs: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
-        """
-        Создает чанки из обработанных документов
-        Возвращает список кортежей (web_id, chunk_text)
-        """
+        """Создает чанки с фильтрацией качества"""
         all_chunks = []
+        filtered_count = 0
 
         for web_id, text in processed_docs:
             chunks = self.smart_chunking(text)
             for chunk in chunks:
-                if len(chunk.strip()) >= self.config.MIN_CHUNK_LENGTH:
+                if self.is_quality_chunk(chunk):
                     all_chunks.append((web_id, chunk.strip()))
+                else:
+                    filtered_count += 1
 
-        self.logger.info(f"Created {len(all_chunks)} chunks from {len(processed_docs)} documents")
+        self.logger.info(f"Created {len(all_chunks)} chunks (filtered {filtered_count} low-quality chunks)")
         return all_chunks

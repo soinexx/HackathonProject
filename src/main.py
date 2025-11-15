@@ -61,8 +61,9 @@ def main():
         logger.info("Initializing retrieval system with ChromaDB...")
         retriever = AlfabankRetrieval(config)
 
+        # Сборка индекса (только если нужно)
         logger.info("Building search index...")
-        retriever.build_index(websites_df)
+        retriever.build_index(websites_df, force_rebuild=False)  # force_rebuild=True для пересборки
 
         # Информация о коллекции
         collection_info = retriever.get_collection_info()

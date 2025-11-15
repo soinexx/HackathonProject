@@ -28,20 +28,30 @@ class AlfabankRetrieval:
         self.collection_name = "alfabank_documents"
 
     def initialize_chroma(self, persist_directory: str = "chroma_db"):
-        """Инициализация ChromaDB клиента и коллекции"""
+        """Инициализация ChromaDB с проверкой существования коллекции"""
         try:
-            # Создаем персистентного клиента
-            self.chroma_client = chromadb.PersistentClient(path=persist_directory)
-            self.logger.info(f"ChromaDB initialized with persist directory: {persist_directory}")
+            from sentence_transformers import SentenceTransformer
+            import chromadb.utils.embedding_functions as embedding_functions
 
-            # Пытаемся получить существующую коллекцию или создать новую
+            # Создаем embedding function совместимую с новой версией ChromaDB
+            sentence_transformer_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+            )
+
+            self.chroma_client = chromadb.PersistentClient(path=persist_directory)
+
+            # Пытаемся получить существующую коллекцию
             try:
-                self.collection = self.chroma_client.get_collection(name=self.collection_name)
+                self.collection = self.chroma_client.get_collection(
+                    name=self.collection_name,
+                    embedding_function=sentence_transformer_ef
+                )
                 self.logger.info(f"Loaded existing collection: {self.collection_name}")
             except Exception:
-                # Создаем новую коллекцию
+                # Если коллекции нет - создаем новую
                 self.collection = self.chroma_client.create_collection(
                     name=self.collection_name,
+                    embedding_function=sentence_transformer_ef,
                     metadata={"description": "Alfabank documents and FAQs"}
                 )
                 self.logger.info(f"Created new collection: {self.collection_name}")
@@ -50,12 +60,34 @@ class AlfabankRetrieval:
             self.logger.error(f"Error initializing ChromaDB: {e}")
             raise
 
-    def build_index(self, documents_df: pd.DataFrame) -> None:
+    def clear_collection(self):
+        """Очищает текущую коллекцию"""
+        if self.collection:
+            all_ids = self.collection.get()['ids']
+            if all_ids:
+                self.collection.delete(ids=all_ids)
+                self.logger.info(f"Cleared {len(all_ids)} records from collection")
+
+    def build_index(self, documents_df: pd.DataFrame, force_rebuild: bool = False) -> None:
         """Построение индекса документов в ChromaDB"""
         self.logger.info("Starting index building process with ChromaDB...")
 
         # Инициализируем ChromaDB
         self.initialize_chroma()
+
+        # Проверяем, нужно ли перестраивать индекс
+        if not force_rebuild and self.collection.count() > 0:
+            self.logger.info("Index already exists. Skipping build. Use force_rebuild=True to rebuild.")
+            return
+
+        # Очищаем только если force_rebuild=True
+        if force_rebuild:
+            self.clear_collection()
+        else:
+            # Если есть данные и не требуется пересборка - выходим
+            if self.collection.count() > 0:
+                self.logger.info("Using existing index. Collection already contains data.")
+                return
 
         # 1. Предобработка документов
         self.logger.info("Step 1: Preprocessing documents...")
@@ -96,10 +128,7 @@ class AlfabankRetrieval:
         self.logger.info(f"Index built successfully. Added {len(documents)} chunks to ChromaDB")
 
     def search(self, query: str, top_k: int = None, n_results: int = None) -> List[str]:
-        """
-        Поиск релевантных документов для запроса
-        Возвращает список web_id топ документов
-        """
+        """Поиск релевантных документов для запроса"""
         if top_k is None:
             top_k = self.config.FINAL_TOP_K_DOCS
         if n_results is None:
@@ -118,17 +147,15 @@ class AlfabankRetrieval:
             # Агрегация результатов на уровень документов
             doc_scores = {}
 
-            # results содержит: ['ids', 'distances', 'metadatas', 'embeddings', 'documents']
             if results['metadatas'] and len(results['metadatas']) > 0:
-                metadatas = results['metadatas'][0]  # берем первый (и единственный) запрос
+                metadatas = results['metadatas'][0]
                 distances = results['distances'][0] if results['distances'] else []
 
                 for i, metadata in enumerate(metadatas):
                     if metadata and 'document_id' in metadata:
                         doc_id = metadata['document_id']
-                        # Преобразуем расстояние в схожесть (1 - normalized distance)
                         distance = distances[i] if i < len(distances) else 1.0
-                        similarity = 1.0 / (1.0 + distance)  # преобразование расстояния в схожесть
+                        similarity = 1.0 / (1.0 + distance)
 
                         if doc_id not in doc_scores or similarity > doc_scores[doc_id]:
                             doc_scores[doc_id] = similarity
