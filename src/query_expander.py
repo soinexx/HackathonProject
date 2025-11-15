@@ -1,5 +1,6 @@
 # query_expander.py
 from typing import Dict, List
+import re
 
 class QueryExpander:
     """Расширитель запросов для улучшения поиска"""
@@ -67,6 +68,53 @@ class QueryExpander:
 
         unique_terms = list(dict.fromkeys(expanded_terms))
         return " ".join(unique_terms)
+
+
+class EnhancedQueryExpander(QueryExpander):
+    """Улучшенный расширитель запросов с ML-подходом"""
+
+    def __init__(self):
+        super().__init__()
+        self.enhanced_synonyms = {
+            # Добавляем контекстные синонимы
+            "не приходит": ["не поступает", "не доходит", "задерживается", "не получаю"],
+            "не работает": ["не функционирует", "сбоит", "ошибка", "недоступен"],
+            "как узнать": ["как посмотреть", "где посмотреть", "как проверить", "как узнать"],
+            "как отключить": ["как отказаться", "как прекратить", "отмена", "деактивация"],
+            "как подключить": ["как оформить", "как заказать", "активация", "подписка"],
+            "сколько стоит": ["какая цена", "стоимость", "тариф", "расценки"],
+            "почему не": ["по какой причине не", "из-за чего не", "в чем причина"],
+        }
+
+    def expand_with_llm_patterns(self, query: str) -> str:
+        """Добавляем шаблонные расширения для частых вопросов"""
+        query_lower = query.lower()
+        expanded_terms = [query]
+
+        # Паттерны для частых вопросов
+        patterns = {
+            r'(смс|уведомлен)(?:ия|ий)?\s*(?:не\s+приходит?)':
+                ["смс уведомления не приходят", "не поступают смс", "смс не доходят"],
+            r'карт[ауы]?\s*(?:не\s+работает)':
+                ["карта не работает", "не функционирует карта", "карта недоступна"],
+            r'приложени[ея]\s*(?:не\s+работает)':
+                ["приложение не работает", "мобильный банк не работает", "приложение недоступно"],
+        }
+
+        for pattern, expansions in patterns.items():
+            if re.search(pattern, query_lower):
+                expanded_terms.extend(expansions)
+
+        return ' '.join(list(dict.fromkeys(expanded_terms)))
+
+    def smart_expand(self, query: str) -> str:
+        """Умное расширение запроса"""
+        basic_expanded = self.expand_query(query)
+        llm_expanded = self.expand_with_llm_patterns(query)
+
+        # Комбинируем подходы
+        all_terms = list(dict.fromkeys(basic_expanded.split() + llm_expanded.split()))
+        return ' '.join(all_terms[:10])  # ограничиваем количество терминов
 
 
 

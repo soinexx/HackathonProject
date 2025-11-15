@@ -9,8 +9,12 @@ class Config:
     """Конфигурация параметров RAG-системы с улучшениями"""
 
     # Параметры чанкования - ОБНОВЛЕНО
-    CHUNK_SIZE: int = 180      #  используется DataPreprocessor'ом
-    CHUNK_OVERLAP: int = 30    # В токенах примерно
+    CHUNK_SIZE: int = 250      #  используется DataPreprocessor'ом
+    CHUNK_OVERLAP: int = 50    # В токенах примерно
+
+    # Параметры расширения запросов
+    USE_ENHANCED_EXPANSION: bool = True
+    MAX_EXPANSION_TERMS: int = 8
 
     # Фильтрация технических текстов
     MIN_UNIQUE_WORDS_RATIO: float = 0.3
@@ -22,12 +26,13 @@ class Config:
     # Кросс-энкодер для реранжирования
     USE_RERANKER: bool = True
     RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3"
+    RERANKER_MIN_CONFIDENCE: float = 0.1
 
     # Динамические веса - НОВОЕ
     USE_DYNAMIC_WEIGHTS: bool = True
     SHORT_QUERY_TOKENS: int = 5
-    BM25_BONUS_SHORT: float = 0.20
-    BM25_BONUS_HAS_DIGITS: float = 0.10
+    BM25_BONUS_SHORT: float = 0.15
+    BM25_BONUS_HAS_DIGITS: float = 0.08
     BM25_BONUS_KEYWORDS: List[str] = field(default_factory=lambda: [
         "счет", "карта", "перевод", "платеж", "ипотека", "кредит", "валюта", "комисси", "смс", "уведомление", "оповещение"
     ])
@@ -61,7 +66,7 @@ class Config:
     TITLE_BOOST: float = 0.10
 
     # Поисковые параметры
-    SEARCH_TOP_K_CHUNKS: int = 20
+    SEARCH_TOP_K_CHUNKS: int = 60
     FINAL_TOP_K_DOCS: int = 5
 
     # Обработка текста
@@ -73,9 +78,9 @@ class Config:
     MAX_WORDS_IN_CHUNK: int = 180
 
     # Кандидаты для разных стадий AdvancedHybridRetrieval
-    TFIDF_CANDIDATES: int = 400
-    DENSE_CANDIDATES: int = 400
-    RERANK_CANDIDATES: int = 120
+    TFIDF_CANDIDATES: int = 800
+    DENSE_CANDIDATES: int = 800
+    RERANK_CANDIDATES: int = 200
 
     # ChromaDB настройки
     CHROMA_PERSIST_DIR: str = "chroma_db"

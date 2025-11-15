@@ -97,27 +97,45 @@ class AdvancedHybridRetrieval:
             self.document_urls[doc_id] = url
 
     def _calculate_dynamic_weights(self, query: str) -> Tuple[float, float]:
-        if not self.config.USE_DYNAMIC_WEIGHTS:
-            return 0.3, 0.7
-
-        base_tfidf_weight = 0.3
-        base_embedding_weight = 0.7
-
+        """УЛУЧШЕННАЯ динамическая весовая схема"""
         words = query.split()
         has_digits = any(char.isdigit() for char in query)
         is_short = len(words) <= self.config.SHORT_QUERY_TOKENS
-        has_keywords = any(kw in query.lower() for kw in self.config.BM25_BONUS_KEYWORDS)
 
+        # Анализ типа запроса
+        query_lower = query.lower()
+        is_factual = any(word in query_lower for word in ['сколько', 'когда', 'где', 'какой', 'номер'])
+        is_problem = any(phrase in query_lower for phrase in ['не работает', 'не приходит', 'ошибка', 'проблема'])
+        is_howto = any(phrase in query_lower for phrase in ['как', 'какой способ', 'инструкция'])
+
+        # Базовые веса в зависимости от типа
+        if is_factual or has_digits:
+            base_tfidf_weight = 0.6  # фактологические запросы -> TF-IDF
+            base_embedding_weight = 0.4
+        elif is_problem:
+            base_tfidf_weight = 0.4
+            base_embedding_weight = 0.6  # проблемные -> семантика
+        elif is_howto:
+            base_tfidf_weight = 0.3
+            base_embedding_weight = 0.7  # инструкции -> семантика
+        else:
+            base_tfidf_weight = 0.5
+            base_embedding_weight = 0.5
+
+        # Модификаторы
         tfidf_bonus = 0.0
         if is_short:
-            tfidf_bonus += self.config.BM25_BONUS_SHORT
+            tfidf_bonus += 0.15  # УВЕЛИЧИВАЕМ бонус для коротких
         if has_digits:
-            tfidf_bonus += self.config.BM25_BONUS_HAS_DIGITS
-        if has_keywords:
-            tfidf_bonus += 0.15
+            tfidf_bonus += 0.10
+        if any(kw in query_lower for kw in ['счет', 'карта', 'номер']):
+            tfidf_bonus += 0.10  # конкретные термины
 
-        tfidf_weight = min(0.6, base_tfidf_weight + tfidf_bonus)
+        tfidf_weight = min(0.8, base_tfidf_weight + tfidf_bonus)
         embedding_weight = 1.0 - tfidf_weight
+
+        self.logger.debug(f"Query type analysis - factual: {is_factual}, problem: {is_problem}, howto: {is_howto}")
+        self.logger.debug(f"Final weights - TF-IDF: {tfidf_weight:.2f}, Embedding: {embedding_weight:.2f}")
 
         return tfidf_weight, embedding_weight
 
@@ -240,8 +258,8 @@ class AdvancedHybridRetrieval:
         reranked = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
         return [doc_id for doc_id, _ in reranked[:top_k]]
 
-    def _rerank_with_cross_encoder(self, query: str, candidates: List[str], top_k: int) -> List[str]:
-        """Точное реранжирование с помощью cross-encoder'а"""
+    def _enhanced_rerank_with_cross_encoder(self, query: str, candidates: List[str], top_k: int) -> List[str]:
+        """УЛУЧШЕННОЕ реранжирование с cross-encoder"""
         if not candidates or not self.cross_encoder:
             return candidates[:top_k]
 
@@ -250,18 +268,43 @@ class AdvancedHybridRetrieval:
             for doc_id in candidates:
                 text = self.document_texts.get(doc_id, "")
                 title = self.document_titles.get(doc_id, "")
-                combined = f"{title}. {text[:500]}"
-                candidate_texts.append(combined)
+                url = self.document_urls.get(doc_id, "")
 
-            pairs = [[query, doc_text] for doc_text in candidate_texts]
-            ce_scores = self.cross_encoder.predict(pairs)
+                # УЛУЧШЕННОЕ формирование контента для реранжирования
+                # Приоритет: заголовок > начало текста > URL
+                if title and len(title) > 10:
+                    # Используем заголовок + первые 300 символов текста
+                    content = f"{title}. {text[:300]}"
+                else:
+                    # Используем URL + первые 500 символов текста
+                    content = f"{url}. {text[:500]}"
 
-            scored_candidates = list(zip(candidates, ce_scores))
+                candidate_texts.append(content)
+
+            # Пакетная обработка с оптимизацией
+            batch_size = 32
+            all_scores = []
+
+            for i in range(0, len(candidate_texts), batch_size):
+                batch_texts = candidate_texts[i:i + batch_size]
+                batch_pairs = [[query, doc_text] for doc_text in batch_texts]
+                batch_scores = self.cross_encoder.predict(batch_pairs)
+                all_scores.extend(batch_scores)
+
+            scored_candidates = list(zip(candidates, all_scores))
             scored_candidates.sort(key=lambda x: x[1], reverse=True)
 
-            return [doc_id for doc_id, _ in scored_candidates[:top_k]]
+            # Фильтр по минимальному порогу уверенности
+            min_confidence = self.config.RERANKER_MIN_CONFIDENCE  # можно настроить / ИСПОЛЬЗУЕМ КОНФИГ
+            confident_candidates = [
+                doc_id for doc_id, score in scored_candidates
+                if score > min_confidence
+            ]
+
+            return confident_candidates[:top_k] if confident_candidates else candidates[:top_k]
+
         except Exception as e:
-            self.logger.error(f"Error in cross-encoder reranking: {e}")
+            self.logger.error(f"Error in enhanced cross-encoder reranking: {e}")
             return candidates[:top_k]
 
     def search(
@@ -314,7 +357,7 @@ class AdvancedHybridRetrieval:
         )
 
         if self.cross_encoder and len(embedding_reranked_docs) > 1:
-            final_docs = self._rerank_with_cross_encoder(
+            final_docs = self._enhanced_rerank_with_cross_encoder(
                 norm_query,
                 embedding_reranked_docs[:rerank_candidates],
                 top_k

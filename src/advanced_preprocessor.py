@@ -67,38 +67,49 @@ class AdvancedPreprocessor:
         return text[:800]
 
     def aggressive_chunking(self, text: str) -> List[str]:
-        """СУПЕР-агрессивное чанкование для точного попадания"""
+        """Менее агрессивное чанкование"""
+        original_length = len(text.split())
         key_text = self.extract_key_sections(text)
         words = key_text.split()
         chunks: List[str] = []
 
-        step = self.config.MAX_WORDS_IN_CHUNK
+        # УВЕЛИЧИВАЕМ размер чанка и добавляем overlap
+        step = self.config.MAX_WORDS_IN_CHUNK - 30  # overlap 30 слов
         for i in range(0, len(words), step):
-            chunk_words = words[i:i + step]
+            chunk_words = words[i:i + self.config.MAX_WORDS_IN_CHUNK]
             if len(chunk_words) < self.config.MIN_WORDS_IN_CHUNK:
                 continue
+
             chunk = ' '.join(chunk_words)
+            chunks.append(chunk)
 
-            if self.is_high_quality_chunk(chunk):
-                chunks.append(chunk)
+        result_chunks = chunks[:15]  # увеличиваем лимит
 
-        return chunks[:10]  # НЕ БОЛЕЕ 10 чанков на документ
+        # ЛОГИРОВАНИЕ для отладки
+        if len(result_chunks) > 0:
+            self.logger.debug(
+                f"Created {len(result_chunks)} chunks from {original_length} words (reduced to {len(words)})")
+
+        return result_chunks
 
     def is_high_quality_chunk(self, chunk: str) -> bool:
-        """СТРОГАЯ проверка качества чанка"""
-        # Проверка на спам-паттерны
+        """БОЛЕЕ ЛОЯЛЬНАЯ проверка качества чанка"""
+        # Убираем строгие проверки на банковские термины
+        if not chunk.strip():
+            return False
+
+        # Сохраняем только базовую проверку на спам
         for pattern in self.spam_patterns:
             if re.search(pattern, chunk, re.IGNORECASE):
                 return False
 
-        # Должен содержать банковские термины
-        if not any(term in chunk.lower() for term in self.priority_terms):
-            return False
-
-        # Проверка уникальности слов
+        # СНИЖАЕМ порог уникальности слов
         words = chunk.split()
-        unique_words = set(words)
-        if len(unique_words) / len(words) < 0.35:  # 35% уникальных слов
+        if len(words) < 5:  # минимальная длина
             return False
 
-        return True
+        unique_words = set(words)
+        if len(unique_words) / len(words) < 0.25:  # было 0.35
+            return False
+
+        return True  # принимаем больше чанков
