@@ -1,3 +1,4 @@
+#retriever_tfidf.py
 import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -11,6 +12,9 @@ from tqdm import tqdm
 
 from config import Config
 from preprocessor import DataPreprocessor
+from advanced_preprocessor import AdvancedPreprocessor
+from query_utils import normalize_query_text
+from query_expander import QueryExpander
 
 
 class TFIDFRetrieval:
@@ -19,7 +23,7 @@ class TFIDFRetrieval:
     def __init__(self, config: Config):
         self.config = config
         self.logger = logging.getLogger(__name__)
-        self.preprocessor = DataPreprocessor(config)
+        #self.preprocessor = DataPreprocessor(config) # больше не нужен для TF-IDF
 
         self.vectorizer = None
         self.tfidf_matrix = None
@@ -33,16 +37,30 @@ class TFIDFRetrieval:
         self.logger.info("Building TF-IDF and BM25 indexes...")
 
         # 1. Предобработка и чанкование
-        processed_docs = self.preprocessor.preprocess_documents(documents_df)
-        chunks = self.preprocessor.create_chunks(processed_docs)
+        adv = AdvancedPreprocessor(self.config)
 
         # Сохраняем маппинг и тексты
         self.chunk_texts = []
         self.chunk_to_doc_map = {}
 
-        for i, (doc_id, chunk_text) in enumerate(chunks):
-            self.chunk_texts.append(chunk_text)
-            self.chunk_to_doc_map[i] = doc_id
+        idx = 0
+        for _, row in documents_df.iterrows():
+            doc_id = str(row['web_id'])
+            text = str(row['text'])
+
+            doc_chunks = adv.aggressive_chunking(text)
+            if not doc_chunks:
+                # fallback — ключевые секции или начало текста
+                fallback = adv.extract_key_sections(text)
+                if fallback:
+                    doc_chunks = [fallback]
+
+            for ch in doc_chunks:
+                self.chunk_texts.append(ch)
+                self.chunk_to_doc_map[idx] = doc_id
+                idx += 1
+
+        self.logger.info(f"Created {len(self.chunk_texts)} chunks for TF-IDF/BM25")
 
         # 2. Создание TF-IDF матрицы
         self.logger.info("Creating TF-IDF matrix...")
@@ -83,42 +101,41 @@ class TFIDFRetrieval:
         if self.tfidf_matrix is None or self.bm25 is None:
             raise ValueError("Index not built. Call build_index() first.")
 
+        # нормализуем и расширяем запрос
+        norm_query = normalize_query_text(query)
+        expander = QueryExpander()
+        expanded_query = expander.expand_query(norm_query)
+
         # Токенизация запроса для BM25
-        tokenized_query = query.split()
+        tokenized_query = expanded_query.split()
 
         # Вычисление скоров для каждого метода
         scores = {}
 
         if method in ["tfidf", "hybrid"]:
-            # TF-IDF косинусная схожесть
-            query_vec = self.vectorizer.transform([query])
+            query_vec = self.vectorizer.transform([expanded_query])
             tfidf_similarities = cosine_similarity(query_vec, self.tfidf_matrix).flatten()
 
-            # Нормализация TF-IDF скоров
             if tfidf_similarities.max() > 0:
                 tfidf_scores = tfidf_similarities / tfidf_similarities.max()
             else:
                 tfidf_scores = tfidf_similarities
 
-            for i, score in enumerate(tfidf_scores):
-                if i not in scores:
-                    scores[i] = 0
-                scores[i] += score * 0.6  # вес TF-IDF
+            for i, s in enumerate(tfidf_scores):
+                scores.setdefault(i, 0.0)
+                scores[i] += s * 0.6
 
         if method in ["bm25", "hybrid"]:
-            # BM25 схожесть
             bm25_scores = self.bm25.get_scores(tokenized_query)
 
-            # Нормализация BM25 скоров
             if bm25_scores.max() > 0:
                 bm25_scores_norm = bm25_scores / bm25_scores.max()
             else:
                 bm25_scores_norm = bm25_scores
 
-            for i, score in enumerate(bm25_scores_norm):
-                if i not in scores:
-                    scores[i] = 0
-                scores[i] += score * 0.4  # вес BM25
+            for i, s in enumerate(bm25_scores_norm):
+                scores.setdefault(i, 0.0)
+                scores[i] += s * 0.4
 
         # Агрегация на уровень документов (максимальный скор чанка)
         doc_scores = {}

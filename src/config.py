@@ -1,4 +1,4 @@
-# config.py - ОБНОВЛЕННАЯ ВЕРСИЯ
+# config.py
 import os
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
@@ -9,18 +9,17 @@ class Config:
     """Конфигурация параметров RAG-системы с улучшениями"""
 
     # Параметры чанкования - ОБНОВЛЕНО
-    CHUNK_SIZE: int = 320      # В токенах примерно
-    CHUNK_OVERLAP: int = 64    # В токенах примерно
+    CHUNK_SIZE: int = 180      #  используется DataPreprocessor'ом
+    CHUNK_OVERLAP: int = 30    # В токенах примерно
 
     # Фильтрация технических текстов
     MIN_UNIQUE_WORDS_RATIO: float = 0.3
 
-    # Модель эмбеддингов - ОБНОВЛЕНО на более современную
-    # Добавляем параметр для моделей требующих trust_remote_code
+    # Модель эмбеддингов
     TRUST_REMOTE_CODE: bool = True
     EMBEDDING_MODEL: str = "Alibaba-NLP/gte-multilingual-base"
 
-    # Кросс-энкодер для реранжирования - НОВОЕ
+    # Кросс-энкодер для реранжирования
     USE_RERANKER: bool = True
     RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3"
 
@@ -33,15 +32,32 @@ class Config:
         "счет", "карта", "перевод", "платеж", "ипотека", "кредит", "валюта", "комисси", "смс", "уведомление", "оповещение"
     ])
 
-    # Бустинг по URL и заголовкам - НОВОЕ
+    # Бустинг по URL и заголовкам
     URL_POSITIVE_PATTERNS: List[str] = field(default_factory=lambda: [
-        r"/a-?club", r"\bpremium\b", r"wealth", r"privilege", r"/investment"
+        r"/help",
+        r"/retail",
+        r"/everyday",
+        r"/get-money",
+        r"/make-money",
+        r"/mobile",
+        r"/debitcards",
+        r"/credit-cards",
     ])
     URL_NEGATIVE_PATTERNS: List[str] = field(default_factory=lambda: [
-        r"/vacanc", r"/news", r"/press", r"/cookies", r"/privacy"
+        r"job\.alfabank\.ru",
+        r"/lp/retail/games",
+        r"/games",
+        r"/site-upload",
+        r"/upload",
+        r"/media",
+        r"/vacanc",
+        r"/news",
+        r"/press",
+        r"/cookies",
+        r"/privacy",
     ])
-    URL_POSITIVE_BOOST: float = 0.07
-    URL_NEGATIVE_PENALTY: float = 0.10
+    URL_POSITIVE_BOOST: float = 0.10
+    URL_NEGATIVE_PENALTY: float = 0.05
     TITLE_BOOST: float = 0.10
 
     # Поисковые параметры
@@ -49,8 +65,17 @@ class Config:
     FINAL_TOP_K_DOCS: int = 5
 
     # Обработка текста
-    MAX_TEXT_LENGTH: int = 8000
-    MIN_CHUNK_LENGTH: int = 50
+    MAX_TEXT_LENGTH: int = 3000
+    MIN_CHUNK_LENGTH: int = 30
+
+    # Параметры чанков для AdvancedPreprocessor (в словах)
+    MIN_WORDS_IN_CHUNK: int = 20
+    MAX_WORDS_IN_CHUNK: int = 180
+
+    # Кандидаты для разных стадий AdvancedHybridRetrieval
+    TFIDF_CANDIDATES: int = 200
+    DENSE_CANDIDATES: int = 200
+    RERANK_CANDIDATES: int = 80
 
     # ChromaDB настройки
     CHROMA_PERSIST_DIR: str = "chroma_db"
@@ -69,7 +94,6 @@ class Config:
     OUTPUT_FILE: str = "submit.csv"
 
     def get_paths(self) -> Dict[str, str]:
-        """Возвращает полные пути к файлам"""
         return {
             'questions': os.path.join(self.DATA_DIR, self.QUESTIONS_FILE),
             'websites': os.path.join(self.DATA_DIR, self.WEBSITES_FILE),
